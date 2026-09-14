@@ -1,0 +1,70 @@
+# infra-assistant configuration — copy to infra-assistant.toml and edit.
+#
+# Secrets are NEVER written here. A field ending in `_env` names an environment
+# variable; the value is read from the process environment at startup. A missing
+# bot token, an empty provider chain, or any named-but-absent `*_env` variable
+# is a fatal error — the bot will not start half-configured.
+
+[telegram]
+bot_token_env = "TELEGRAM_BOT_TOKEN"
+# Numeric chat ids allowed to talk to the bot. A message from any other chat is
+# ignored. Find yours by messaging the bot and reading the update, or ask
+# @userinfobot. NOTE: allowlisting a *group* chat id admits every member of that
+# group — use private-chat ids unless that is what you intend.
+owner_allow_from = [123456789]
+
+[llm]
+# true  -> one `litellm` call, model string carries the provider prefix
+#          (e.g. "deepseek/deepseek-chat", "ollama/llama3.1:8b").
+# false -> a direct httpx POST to an OpenAI-compatible /chat/completions
+#          endpoint; no extra dependency. Also togglable with --no-litellm.
+use_litellm = true
+per_call_timeout_seconds = 30      # per single model call
+max_tool_calls_per_turn = 12       # then the model must answer with no tools
+turn_wall_time_seconds = 60        # hard ceiling on one turn, enforced
+tool_call_timeout_seconds = 30     # a wedged tool becomes a tool error
+max_tool_output_chars = 40000      # cumulative tool output kept in one turn's
+                                   # context — stops a chatty turn overflowing a
+                                   # small local fallback model's window
+
+# The fallback chain, tried in order. The first entry that returns wins.
+[[llm.chain]]
+provider = "deepseek"
+model = "deepseek/deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+# Skip this entry while the clock is inside any of these UTC windows and move to
+# the next provider — the "route elsewhere during peak pricing" behaviour.
+# skip_between = ["01:00-04:00Z"]
+
+[[llm.chain]]
+provider = "ollama"
+model = "ollama/llama3.1:8b"
+base_url = "http://ollama.example.invalid:11434"
+
+# One or more MCP servers. Their tool schemas are injected into the system
+# prompt automatically — there is no hand-maintained tool list to keep in sync.
+[[mcp.servers]]
+name = "homelab"
+transport = "stdio"                       # bot spawns the server as a subprocess
+command = "homelab-mcp"
+args = ["run", "-c", "/etc/homelab-mcp/homelab-mcp.toml"]
+# A spawned stdio server gets a MINIMAL base environment (PATH, HOME, LANG, …)
+# plus exactly the vars named here plus `env` below — never the bot's whole
+# os.environ. List the env vars the server's own config resolves (its `*_env`
+# fields); anything not listed (the bot token, LLM keys) stays out of the child.
+# forward_env = ["NETBOX_API_TOKEN", "ADGUARD_USER", "ADGUARD_PASSWORD"]
+# env = { HOMELAB_MCP_EXTRA = "value" }   # extra literal env for the subprocess
+
+# A second server reachable over the network instead:
+# [[mcp.servers]]
+# name = "metrics"
+# transport = "streamable-http"
+# url = "http://mcp.example.invalid:9000/mcp"
+# token_env = "METRICS_MCP_TOKEN"         # -> Authorization: Bearer <value>
+
+[memory]
+# How many recent user/assistant exchanges to replay to the model per chat.
+# 0 disables history (every message is standalone).
+history_turns = 8
+# Directory for per-chat append-only markdown transcripts. Empty disables it.
+log_dir = ""
