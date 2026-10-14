@@ -63,10 +63,11 @@ Activate it once per clone:
 git config core.hooksPath .githooks
 ```
 
-It checks the *diff*, not the tree, for internal host names, real IPs, emails,
+It checks the *diff*, not the tree, for real IPs, emails,
 dated prose, absolute dates at or after 2002, non-placeholder free-text fields,
-quoted log-note-shaped phrases, and the patterns in `.privacy-denylist` (SSH
-aliases, internal DNS suffixes, real endpoint URLs, real-looking chat ids).
+quoted log-note-shaped phrases, and the repo-specific patterns in `.privacy-denylist`
+(internal DNS suffixes, real endpoint URLs, real-looking chat ids), plus the
+private vocabulary in the untracked `.privacy-denylist.private`.
 `.github/workflows/check-privacy.yml` runs the same script server-side, since
 the hook is bypassable with `git push --no-verify`.
 
@@ -75,3 +76,16 @@ writing it, answering the one question above.
 
 **A pass from the script does not mean the diff is safe to publish.** It means
 the cheap half found nothing.
+
+## Private vocabulary stays out of the repo
+
+A tracked denylist of private names would itself publish that vocabulary, so
+the names of your own hosts, sites and projects live in an untracked file,
+`.privacy-denylist.private` (gitignored): one extended regular expression per
+line, with comments on their own line only. Patterns that are invalid or match
+the empty string are rejected with a warning.
+
+`scripts/check_privacy.sh` loads that file when it is present and skips that one
+rule when it is absent (a fresh clone, or CI), so the generic structural rules
+always run. Because CI has no local file, it cannot enforce your private
+vocabulary: run the check locally before pushing.

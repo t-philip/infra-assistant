@@ -22,3 +22,6 @@ infra-assistant.toml
 *.local.toml
 .env
 transcripts/
+
+# Private vocabulary for scripts/check_privacy.sh -- local only, never committed.
+/.privacy-denylist.private
