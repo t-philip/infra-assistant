@@ -1,4 +1,4 @@
-"""Provider-neutral LLM types and the ordered fallback chain (capability 15).
+"""Provider-neutral LLM types and the ordered fallback chain .
 
 The chain does two things and nothing else:
 
@@ -6,7 +6,7 @@ The chain does two things and nothing else:
    move to the next. Only when every entry has failed does it raise.
 2. **Cost-window avoidance.** An entry with a ``skip_between`` window is skipped
    while the clock is inside that window, and the chain moves on. This is the
-   replacement for a "refuse during peak hours" plugin: route to the next
+   skips a provider during a configured window: route to the next
    provider (typically a local model) instead of declining to answer.
 
 There is no difficulty-based routing — that needs a classifier to maintain and
@@ -47,7 +47,7 @@ class LLMResponse:
     """One model turn: free text, or a batch of tool calls, or both.
 
     The ``prompt_tokens``/``completion_tokens``/``total_tokens``/``cost_usd``
-    fields are best-effort (Tier B observability) — a provider that
+    fields are best-effort (optional usage and cost observability) — a provider that
     doesn't report usage, or an unpriced model litellm has no rate for (e.g. a
     local Ollama model), leaves them ``None`` rather than guessing. Never used
     for anything functional; purely so the agent can log what one turn cost.

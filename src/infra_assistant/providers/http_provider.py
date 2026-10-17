@@ -91,7 +91,7 @@ class HTTPProvider:
             raise ProviderError(f"{self.name} returned an unexpected response shape") from exc
         if not isinstance(message, dict):
             raise ProviderError(f"{self.name} returned a non-object message")
-        # Usage (Tier B observability) — best-effort; no cost figure
+        # Usage (optional usage and cost observability) — best-effort; no cost figure
         # here, since that needs litellm's pricing table (LiteLLMProvider only).
         usage = body.get("usage") if isinstance(body, dict) else None
         return parse_openai_choice(

@@ -9,7 +9,7 @@ scheduler.
 > **Status: v1.0.0.** 146 tests against fakes; no automated test exercises a
 > real Telegram bot or LLM provider end to end. See `docs/DESIGN_SPEC.md`.
 
-Pairs naturally with [`homelab-mcp`](../homelab-mcp) as the tool server, but it
+Pairs naturally with [`homelab-mcp`](https://github.com/t-philip/homelab-mcp) as the tool server, but it
 will drive any MCP server.
 
 ## What it does

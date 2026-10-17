@@ -50,7 +50,7 @@ class TimeWindow:
     def parse(cls, spec: str) -> TimeWindow:
         """Parse ``"HH:MM-HH:MM"`` with an optional trailing ``Z`` (UTC, the only tz).
 
-        v1 only understands UTC windows — a DeepSeek-style peak window is quoted
+        v1 only understands UTC windows — a provider peak window is quoted
         in UTC in every provider's docs, and a tz-aware parser is a maintenance
         cost with no caller. A trailing ``Z`` is accepted and ignored; anything
         else after the range is rejected.

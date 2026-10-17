@@ -33,7 +33,7 @@ provider = "deepseek"
 model = "deepseek/deepseek-chat"
 api_key_env = "DEEPSEEK_API_KEY"
 # Skip this entry while the clock is inside any of these UTC windows and move to
-# the next provider — the "route elsewhere during peak pricing" behaviour.
+# the next provider.
 # skip_between = ["01:00-04:00Z"]
 
 [[llm.chain]]

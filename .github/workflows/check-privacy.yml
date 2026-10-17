@@ -7,8 +7,7 @@ name: Privacy check
 #
 # It cannot un-publish anything -- by the time it runs, the commit is on
 # GitHub. What it buys is finding out in minutes rather than never, which for
-# the two leaks that prompted this would have meant catching them the same
-# day instead of after they had shipped in a release.
+# a leak that means catching it the same day instead of after it has shipped in a release.
 
 on:
   push:

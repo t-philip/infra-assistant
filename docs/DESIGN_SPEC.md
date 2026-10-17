@@ -2,7 +2,7 @@
 
 **Status:** alpha — feature-complete for its scope; not yet run against a live
 Telegram bot or a live LLM provider.
-**Last reconciled to code:** 2026-09-01.
+**Last reconciled to code:** v1.0.0.
 
 This document explains how infra-assistant is built and why, and is kept honest
 against the code. Where the build does not match the intent, §0.1 says so.
@@ -15,9 +15,8 @@ It is the bot half of a two-part system: a companion MCP server
 
 ## 0. Purpose
 
-Replace a heavyweight agent framework whose only wanted function was "a
-conversational bot over the infrastructure" with the smallest thing that does
-that well:
+Provide the smallest thing that does "a conversational bot over the
+infrastructure" well:
 
 - long-poll Telegram, restricted to an owner allowlist;
 - one LLM call per model turn, behind an **ordered provider fallback chain**;
@@ -29,7 +28,7 @@ Non-goals, enforced: no self-writing skills, no plugins, no autonomous code
 execution, no multi-channel, no built-in scheduler. If the model wants an action
 taken, it returns the command for a human to run.
 
-### 0.1 Deviations from intent (as of 2026-09-14, after a full code-review pass)
+### 0.1 Deviations from intent (as of v1.0.0)
 
 | Area | Intended | As built | Status |
 |---|---|---|---|
@@ -44,8 +43,8 @@ taken, it returns the command for a human to run.
 | Startup failure | fail loud, not a silent crash loop | `cli._best_effort_startup_alert` — on a non-zero `run` exit it DMs the first owner one line before exiting (best-effort, silent on any problem); the real error is still in the log. Deployment-level supervision (systemd `StartLimit*`, watchdog) is left to the operator | **done** (minimal) |
 | `check` | validate + probe | resolves secrets, assembles the prompt, connects each MCP server; **exits non-zero** if a secret is missing, a server is unreachable, every provider is in a peak window now, or a connected server exposes 0 tools. `--probe-llm` additionally makes one 1-token call per eligible provider and fails on any error | **done** |
 | Packaging | `pipx install infra-assistant` from a release | builds locally with hatchling; not published; `httpx`/`litellm`/`mcp` now upper-bounded | pre-release |
-| Live run | bot proven end to end against a real Telegram bot + real provider | every automated test uses fakes; a real stdio handshake against `homelab-mcp` is verified; `--probe-llm` against a real endpoint is not | **unverified** |
-| Public-repo privacy tooling | `check_privacy.sh` + hook + workflow + denylist | present, byte-identical to the other public repos; active now that this is a standalone repo | **done** |
+| Live run | bot proven end to end against a real Telegram bot + real provider | every automated test uses fakes; a real stdio handshake against an MCP server is verified; `--probe-llm` against a real endpoint is not | **unverified** |
+| Public-repo privacy tooling | `check_privacy.sh` + hook + workflow + denylist | present and active | **done** |
 | Parallel tool calls | — | the tool calls the model asks for in one turn run **concurrently** (`asyncio.gather`), each still bounded by its own `tool_call_timeout`; results are appended in the model's original order and the caps/budgets applied in that order | **done** |
 | Per-turn usage/cost logging | — | `LLMResponse` carries optional `provider_name`/`prompt_tokens`/`completion_tokens`/`total_tokens`/`cost_usd` (`None`, not `0`, when a provider doesn't report usage or the model is unpriced); `Agent.answer()` sums these across every model call in a turn and logs one `"turn complete: latency_ms=… model_calls=… tool_calls=… provider=… […]"` line, plain `key=value` so a log-scraping exporter needs no JSON dependency. Logging only — no exporter or dashboard ships in this repo; an operator wires their own from the log line | **done** (emit side only) |
 
@@ -129,7 +128,7 @@ provider or a tool server is worse than one that refuses to start.
 
 ---
 
-## 4. The provider fallback chain (capability 15)
+## 4. The provider fallback chain 
 
 `[[llm.chain]]` entries are tried in order. The first that returns a response
 wins. **Any** per-entry failure moves the chain on: a `ProviderError`, a
@@ -142,8 +141,7 @@ inside the per-entry `try`, so one misconfigured earlier entry can never
 disable the entries after it.
 
 `skip_between = ["01:00-04:00Z"]` marks a daily UTC window in which that entry
-is skipped and the chain moves on — the replacement for a "refuse during peak
-pricing" behaviour: route to the next provider (typically a local model)
+is skipped and the chain moves on — skips this provider during a configured UTC window (for example a provider's peak-pricing hours): route to the next provider (typically a local model)
 instead of declining. A window may wrap midnight. Only UTC is understood in v1
 (every provider quotes its peak window in UTC; a tz-aware parser is a
 maintenance cost with no caller). If *every* entry is inside a window,
@@ -220,7 +218,7 @@ That file is for the operator; it is never read back.
 
 Per `[[mcp.servers]]`:
 
-- **`stdio`** (default, and what the reference deployment uses): the bot spawns
+- **`stdio`** (default, and the default transport): the bot spawns
   the server as a subprocess. No port, no auth. Verified with a real
   `homelab-mcp` subprocess handshake.
 - **`streamable-http`**: `url` required; `token_env` → `Authorization: Bearer`
@@ -240,7 +238,7 @@ back to the right server.
 
 ## 8. Testing
 
-`uv run pytest` — 112 tests, all green. Coverage:
+`uv run pytest` — 146 tests, all green. Coverage:
 
 - `config` — full parse, every rejection path, `TimeWindow` (simple / wrapping /
   garbage), the new `[llm]` knobs parse + reject, `resolve_secrets` reports all
@@ -289,9 +287,7 @@ stay relative). No real infrastructure detail appears anywhere in this repo.
 
 CI: `ruff check` + `ruff format --check` + `mypy --strict` + `pytest` +
 `scripts/check_no_exec.py`. `scripts/check_privacy.sh` + `.githooks/pre-push` +
-`.github/workflows/check-privacy.yml` are present and byte-identical to the
-other public repos; they become active when infra-assistant is split into its
-own git repo (see §0.1).
+`.github/workflows/check-privacy.yml` ship with the repo.
 
 ---
 
@@ -307,7 +303,7 @@ own git repo (see §0.1).
 | A6 | A reply over Telegram's limit is split into valid chunks, counting **UTF-16 units** | **Yes** (test_telegram_bot: ASCII sizes + a 2500-emoji case) |
 | A7 | A missing secret / bot token / empty chain prevents startup, naming the gap; a `run` startup failure DMs the owner | **Yes** (test_config, test_cli; `_best_effort_startup_alert` best-effort) |
 | A8 | The bot exposes no shell / exec / file-write / scheduler of its own | **Tripwire** — `scripts/check_no_exec.py` in CI catches accidental regressions; not proof against deliberate obfuscation (§2) |
-| A9 | The MCP client completes a real stdio handshake with a real server | **Yes** — manual smoke against `homelab-mcp`; in-process `mcp.MCPServer` round-trip in tests |
+| A9 | The MCP client completes a real stdio handshake with a real server | **Yes** — manual smoke against a real MCP server; in-process `mcp.MCPServer` round-trip in tests |
 | A10 | A hung MCP tool call cannot hang the turn | **Yes** — `asyncio.wait_for` per call (test_mcp_client: a sleeping tool → timeout string) |
 | A11 | An unexpected `call_tool` exception surfaces to the model without leaking upstream detail | **Yes** (test_mcp_client) |
 | A12 | `check` exits non-zero for a config that would leave the bot unable to answer | **Yes** — missing secret, unreachable server, all-providers-in-peak-window, 0-tool server; `--probe-llm` adds a live per-provider call |
@@ -328,9 +324,8 @@ own git repo (see §0.1).
 4. **Per-user personas.** One `prompts/` dir for the whole bot. Multi-operator
    deployments would want per-chat overrides; out of scope for v1.
 
-*Resolved 2026-09-01:* `python-telegram-bot` + `litellm` confirmed; provider
-chain = DeepSeek → Ollama with peak-window routing (generic in this repo, real
-values in the private layer); stdio the default transport; no write tools / no
+*Resolved:* `python-telegram-bot` + `litellm` confirmed; provider
+chain = DeepSeek → Ollama with peak-window routing; stdio the default transport; no write tools / no
 autonomous code (tripwire lint + this document). A full code-review pass hardened
 the reliability surface — the wall-clock cap is now enforced with
 `asyncio.timeout`, every MCP tool call has its own timeout, the failover net

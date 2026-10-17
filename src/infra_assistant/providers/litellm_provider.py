@@ -78,7 +78,7 @@ class LiteLLMProvider:
         except (KeyError, IndexError, AttributeError, TypeError) as exc:
             raise ProviderError(f"{self.name} returned an unexpected response shape") from exc
 
-        # Usage/cost (Tier B observability) — best-effort, never fatal.
+        # Usage/cost (optional usage and cost observability) — best-effort, never fatal.
         # A local Ollama model or one litellm has no rate for raises inside
         # completion_cost(); that just means "unpriced", not an error.
         usage = response["usage"] if isinstance(response, dict) and "usage" in response else None

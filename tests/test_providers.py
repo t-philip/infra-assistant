@@ -75,7 +75,7 @@ async def test_http_provider_happy_path() -> None:
 
 @respx.mock
 async def test_http_provider_reports_usage_when_present() -> None:
-    """Tier B observability: token counts flow through when the backend reports them."""
+    """optional usage and cost observability: token counts flow through when the backend reports them."""
     chat_with_usage = {**_CHAT, "usage": {"prompt_tokens": 120, "completion_tokens": 30}}
     respx.post("https://api.deepseek.com/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=chat_with_usage)
@@ -177,7 +177,7 @@ async def test_litellm_provider_parses_response(monkeypatch: pytest.MonkeyPatch)
 
 
 async def test_litellm_provider_reports_usage_and_cost(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tier B observability: usage + litellm's own cost estimate flow through."""
+    """optional usage and cost observability: usage + litellm's own cost estimate flow through."""
     import litellm
 
     chat_with_usage = {**_CHAT, "usage": {"prompt_tokens": 200, "completion_tokens": 50}}
