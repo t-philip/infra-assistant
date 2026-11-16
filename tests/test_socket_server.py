@@ -247,7 +247,8 @@ async def _round_trip(payload: bytes, state: ServerState, *, eof: bool = True) -
     await handle_connection(reader, writer, state)  # type: ignore[arg-type]
     assert writer.closed
     assert writer.data.endswith(b"\n")
-    return json.loads(writer.data)
+    result: dict[str, Any] = json.loads(writer.data)
+    return result
 
 
 async def test_connection_round_trip() -> None:
@@ -285,13 +286,14 @@ async def test_non_ascii_reply_round_trips() -> None:
 
 
 async def _ask(path: Path, payload: bytes) -> dict[str, Any]:
-    reader, writer = await asyncio.open_unix_connection(str(path))  # type: ignore[attr-defined]
+    reader, writer = await asyncio.open_unix_connection(str(path))  # type: ignore[attr-defined,unused-ignore]
     writer.write(payload)
     await writer.drain()
     line = await reader.readline()
     writer.close()
     await writer.wait_closed()
-    return json.loads(line)
+    result: dict[str, Any] = json.loads(line)
+    return result
 
 
 @needs_unix
@@ -326,7 +328,7 @@ async def test_stale_socket_file_is_replaced(tmp_path: Path) -> None:
     import socket as socket_module
 
     sock = tmp_path / "ia.sock"
-    dead = socket_module.socket(socket_module.AF_UNIX, socket_module.SOCK_STREAM)
+    dead = socket_module.socket(socket_module.AF_UNIX, socket_module.SOCK_STREAM)  # type: ignore[attr-defined,unused-ignore]
     dead.bind(str(sock))
     dead.close()  # leaves the file behind with nothing listening
     assert sock.exists()
