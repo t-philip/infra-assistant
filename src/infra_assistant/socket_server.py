@@ -53,8 +53,10 @@ from .memory import ChatMemory
 
 logger = logging.getLogger("infra_assistant.socket")
 
-#: A request line longer than this is refused (a question is a few hundred bytes).
-MAX_REQUEST_BYTES = 16 * 1024
+#: A request line longer than this is refused. Sized so a question at the
+#: character limit still fits when a client escapes every non-ASCII character
+#: (``\uXXXX``, 6 bytes each, which is the default for most JSON encoders).
+MAX_REQUEST_BYTES = 32 * 1024
 #: The question text itself may not exceed this many characters.
 MAX_TEXT_CHARS = 4000
 #: How long a client has to deliver its request line.
@@ -112,7 +114,10 @@ async def handle_request(raw: bytes, state: ServerState) -> dict[str, Any]:
         return _error("not_allowed", "That chat is not allowed.")
 
     if reset:
-        state.memory.reset(chat_id)
+        # Under the chat lock, so a turn already in flight cannot re-add its
+        # exchange after the history was reported cleared.
+        async with state.chat_locks[chat_id]:
+            state.memory.reset(chat_id)
         return {"ok": True, "reply": "History cleared for this chat."}
 
     assert text is not None
@@ -211,9 +216,15 @@ async def _prepare_socket_path(path: Path) -> None:
             asyncio.open_unix_connection(str(path)),  # type: ignore[attr-defined,unused-ignore]
             2.0,
         )
-    except (ConnectionRefusedError, FileNotFoundError, TimeoutError):
+    except (ConnectionRefusedError, FileNotFoundError):
         remove_socket_file(path)  # stale: nothing is listening
         return
+    except TimeoutError as exc:
+        # A server that is alive but slow to accept is not stale; deleting its
+        # socket would leave it running and unreachable.
+        raise InfraAssistantError(
+            f"{path} did not answer a connection probe; not removing it"
+        ) from exc
     w.close()
     raise InfraAssistantError(f"another infra-assistant is already listening on {path}")
 

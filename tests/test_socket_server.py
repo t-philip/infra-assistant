@@ -185,6 +185,35 @@ async def test_one_turn_at_a_time_per_chat() -> None:
     assert peak == 1
 
 
+async def test_reset_waits_for_a_turn_in_flight() -> None:
+    gate = asyncio.Event()
+
+    class GatedCompleter(FakeCompleter):
+        async def complete(self, messages: Any, tools: Any) -> LLMResponse:
+            await gate.wait()
+            return LLMResponse(text="late answer")
+
+    state = _state(GatedCompleter([]))
+    turn = asyncio.create_task(handle_request(_req(chat_id=ALLOWED, text="q"), state))
+    await asyncio.sleep(0.01)
+    reset = asyncio.create_task(handle_request(_req(chat_id=ALLOWED, reset=True), state))
+    await asyncio.sleep(0.01)
+    assert not reset.done()  # blocked behind the running turn
+    gate.set()
+    await asyncio.gather(turn, reset)
+    assert state.memory.history(ALLOWED) == []  # the reset ran last
+
+
+async def test_question_at_the_limit_fits_when_every_character_is_escaped() -> None:
+    state = _state(FakeCompleter([LLMResponse(text="ok")]))
+    text = "é" * MAX_TEXT_CHARS
+    payload = json.dumps({"chat_id": ALLOWED, "text": text}, ensure_ascii=True).encode() + b"\n"
+    assert len(payload) > 16 * 1024  # would have been refused by the old cap
+    assert len(payload) <= MAX_REQUEST_BYTES
+    out = await _round_trip(payload, state)
+    assert out["ok"] is True
+
+
 # ---- handle_connection (in-memory streams) ----------------------------------
 
 
@@ -307,6 +336,27 @@ async def test_stale_socket_file_is_replaced(tmp_path: Path) -> None:
     finally:
         server.close()
         await server.wait_closed()
+
+
+@needs_unix
+async def test_a_slow_live_server_is_not_treated_as_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sock = tmp_path / "ia.sock"
+    first = await start_unix_server(sock, _state(FakeCompleter([])))
+
+    async def _hang(*_a: Any, **_k: Any) -> Any:
+        raise TimeoutError
+
+    monkeypatch.setattr("infra_assistant.socket_server.asyncio.wait_for", _hang)
+    try:
+        with pytest.raises(InfraAssistantError, match="did not answer"):
+            await start_unix_server(sock, _state(FakeCompleter([])))
+        assert sock.exists()  # the live server's socket was left alone
+    finally:
+        monkeypatch.undo()
+        first.close()
+        await first.wait_closed()
 
 
 @needs_unix

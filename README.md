@@ -6,7 +6,7 @@ assembled from plain files, **read-only** tools from one or more
 chain. The deliberate anti-framework — no skills, no plugins, no autonomy, no
 scheduler.
 
-> **Status: v1.1.0.** 176 tests against fakes; no automated test exercises a
+> **Status: v1.1.0.** 179 tests against fakes; no automated test exercises a
 > real Telegram bot or LLM provider end to end. See `docs/DESIGN_SPEC.md`.
 
 Pairs naturally with [`homelab-mcp`](https://github.com/t-philip/homelab-mcp) as the tool server, but it
