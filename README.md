@@ -6,7 +6,7 @@ assembled from plain files, **read-only** tools from one or more
 chain. The deliberate anti-framework — no skills, no plugins, no autonomy, no
 scheduler.
 
-> **Status: v1.0.0.** 146 tests against fakes; no automated test exercises a
+> **Status: v1.1.0.** 176 tests against fakes; no automated test exercises a
 > real Telegram bot or LLM provider end to end. See `docs/DESIGN_SPEC.md`.
 
 Pairs naturally with [`homelab-mcp`](https://github.com/t-philip/homelab-mcp) as the tool server, but it
@@ -73,6 +73,28 @@ infra-assistant run -c infra-assistant.toml
 ```
 
 `--no-litellm` forces the direct-`httpx` provider path for this run.
+
+### Without Telegram: `serve`
+
+```sh
+infra-assistant serve -c infra-assistant.toml --socket /run/infra-assistant/ia.sock
+```
+
+`serve` runs the same agent, memory and tools but takes questions from a local
+Unix socket instead of Telegram — for a front end that owns the chat connection
+itself and hands the agent whatever it does not answer. No Telegram code runs in
+this mode and the bot token is not loaded. The socket is created mode `0600`, the
+connecting uid must match the server's (Linux), and `chat_id` must be in
+`[telegram].owner_allow_from`. One JSON request line in, one JSON reply line out:
+
+```json
+{"chat_id": 111, "text": "is node-a up?"}
+{"ok": true, "reply": "node-a is active"}
+```
+
+`{"chat_id": 111, "reset": true}` clears that chat's history. Errors come back as
+`{"ok": false, "error": "<code>", "reply": "<message>"}`; a reply is never split,
+so the caller chunks it for its own transport. See `docs/DESIGN_SPEC.md`.
 
 ## The system prompt
 

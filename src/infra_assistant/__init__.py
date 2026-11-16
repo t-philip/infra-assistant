@@ -6,6 +6,6 @@ anti-framework: no skills, no plugins, no autonomy, no scheduler. If the model
 wants an action taken, it returns the command for a human to run.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.1.0"
 
 __all__ = ["__version__"]

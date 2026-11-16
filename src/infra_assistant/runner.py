@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 from .agent import Agent
 from .config import Config
@@ -93,6 +94,37 @@ async def serve(config: Config, secrets: dict[str, str], prompt_dir: str) -> Non
             await app.updater.stop()
             await app.stop()
     finally:
+        await runtime.aclose()
+
+
+async def serve_socket(
+    config: Config, secrets: dict[str, str], prompt_dir: str, socket_path: str
+) -> None:
+    """Answer questions from a local Unix socket until interrupted (no Telegram)."""
+    from .socket_server import ServerState, remove_socket_file, start_unix_server
+
+    runtime = await build_runtime(config, secrets, prompt_dir)
+    server = None
+    try:
+        state = ServerState(
+            agent=runtime.agent,
+            memory=runtime.memory,
+            allow_from=frozenset(config.telegram.owner_allow_from),
+            turn_wall_time=config.llm.turn_wall_time_seconds,
+        )
+        server = await start_unix_server(socket_path, state)
+        logger.info(
+            "infra-assistant listening on %s — %d MCP tool(s), %d provider(s) in the chain",
+            socket_path,
+            runtime.pool.tool_count,
+            len(config.llm.chain),
+        )
+        await _wait_for_stop()
+    finally:
+        if server is not None:
+            server.close()
+            await server.wait_closed()
+            remove_socket_file(Path(socket_path))
         await runtime.aclose()
 
 

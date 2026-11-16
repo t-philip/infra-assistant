@@ -1,6 +1,6 @@
 [project]
 name = "infra-assistant"
-version = "1.0.0"
+version = "1.1.0"
 description = "A minimal Telegram assistant for infrastructure Q&A: one LLM, a good system prompt, read-only MCP tools, and a provider fallback chain. No skills, no autonomy."
 readme = "README.md"
 requires-python = ">=3.11"

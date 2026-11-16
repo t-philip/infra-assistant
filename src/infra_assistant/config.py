@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import re
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 from pathlib import Path
@@ -162,7 +162,12 @@ class Config:
                 names[f"mcp.servers.{server.name}.token_env"] = server.token_env
         return names
 
-    def resolve_secrets(self, environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    def resolve_secrets(
+        self,
+        environ: Mapping[str, str] | None = None,
+        *,
+        skip: Collection[str] = (),
+    ) -> dict[str, str]:
         """Resolve every ``*_env`` field against *environ*.
 
         Returns ``{env_var_name: value}``. Raises :class:`ConfigError` listing
@@ -172,11 +177,17 @@ class Config:
         a value comes from ``$CREDENTIALS_DIRECTORY/<name>`` (or another creds
         directory) before ``os.environ``, so a secret need never sit in the
         process environment.
+
+        Variable names in *skip* are neither required nor loaded — ``serve``
+        uses this to keep the Telegram bot token out of a process that has no
+        Telegram code.
         """
         env: Mapping[str, str] = default_credential_source() if environ is None else environ
         resolved: dict[str, str] = {}
         missing: list[str] = []
         for field_path, var_name in self.secret_env_names().items():
+            if var_name in skip:
+                continue
             value = env.get(var_name, "")
             if value == "":
                 missing.append(f"{field_path} -> ${var_name}")

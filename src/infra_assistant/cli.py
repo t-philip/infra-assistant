@@ -36,6 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     for name, help_text in (
         ("run", "run the bot (long-poll Telegram)"),
+        ("serve", "answer questions from a local Unix socket (no Telegram)"),
         ("check", "validate config, probe providers and MCP servers, then exit"),
     ):
         p = sub.add_parser(name, help=help_text)
@@ -48,6 +49,13 @@ def _build_parser() -> argparse.ArgumentParser:
             help=f"directory holding persona.md / user.md / context.md (default: {_DEFAULT_PROMPT_DIR})",
         )
         p.add_argument("--no-litellm", action="store_true", help="force the httpx provider path")
+        if name == "serve":
+            p.add_argument(
+                "--socket",
+                default=os.environ.get("INFRA_ASSISTANT_SOCKET"),
+                help="path of the Unix socket to listen on, created mode 600 "
+                "(default: $INFRA_ASSISTANT_SOCKET)",
+            )
         if name == "check":
             p.add_argument(
                 "--probe-llm",
@@ -178,6 +186,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             from .runner import serve
 
             asyncio.run(serve(config, secrets, prompt_dir))
+            return 0
+        if args.command == "serve":
+            if not args.socket:
+                print("error: --socket (or $INFRA_ASSISTANT_SOCKET) is required", file=sys.stderr)
+                return 2
+            # No Telegram code runs in this mode, so the bot token is neither
+            # required nor loaded.
+            secrets = config.resolve_secrets(skip={config.telegram.bot_token_env})
+            secret_redaction.redact_secrets(secrets.values())
+            from .runner import serve_socket
+
+            asyncio.run(serve_socket(config, secrets, prompt_dir, args.socket))
             return 0
     except InfraAssistantError as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -2,7 +2,7 @@
 
 **Status:** alpha — feature-complete for its scope; not yet run against a live
 Telegram bot or a live LLM provider.
-**Last reconciled to code:** v1.0.0.
+**Last reconciled to code:** v1.1.0.
 
 This document explains how infra-assistant is built and why, and is kept honest
 against the code. Where the build does not match the intent, §0.1 says so.
@@ -28,7 +28,7 @@ Non-goals, enforced: no self-writing skills, no plugins, no autonomous code
 execution, no multi-channel, no built-in scheduler. If the model wants an action
 taken, it returns the command for a human to run.
 
-### 0.1 Deviations from intent (as of v1.0.0)
+### 0.1 Deviations from intent (as of v1.1.0)
 
 | Area | Intended | As built | Status |
 |---|---|---|---|
@@ -41,6 +41,7 @@ taken, it returns the command for a human to run.
 | Tool-call loop | cap on calls/turn + wall-clock cap; never a half-formed reply | `agent.py`; `max_tool_calls_per_turn` then tools withdrawn + one nudge; **`turn_wall_time_seconds` is now enforced with `asyncio.timeout` around each model call** (the between-calls check alone could not bound a hung `await`) → `TurnTimeout` → clean bot message; a cumulative `[llm].max_tool_output_chars` budget trims later tool results so a chatty turn can't overflow a small local fallback model | **done** |
 | Explicitly absent | no exec/shell/file-write/self-mod/scheduler | `scripts/check_no_exec.py` — a **tripwire** (its own docstring says so): regex-matched imports/calls for `subprocess`, `asyncio.create_subprocess_*`, `os.system`/`popen`/`exec*`/`spawn*`/`fork`, `multiprocessing`, `runpy`, `importlib`, `ctypes`/`cffi`, `eval`/`exec`/`compile`, and file-writes (`.open("w"/"a")`, `open(p, "w")`, `.write_text/_bytes`) outside `memory.py`. Wired into CI | **done** |
 | Startup failure | fail loud, not a silent crash loop | `cli._best_effort_startup_alert` — on a non-zero `run` exit it DMs the first owner one line before exiting (best-effort, silent on any problem); the real error is still in the log. Deployment-level supervision (systemd `StartLimit*`, watchdog) is left to the operator | **done** (minimal) |
+| Local socket front end (`serve`, v1.1.0) | a second way to ask the agent, without Telegram | `socket_server.py`; one JSON request line in, one reply line out over a Unix socket; **no Telegram code runs and `[telegram].bot_token_env` is skipped** (`resolve_secrets(skip=...)`); socket born `0600` via `umask` and re-checked after `bind`, uid must equal the server's where `SO_PEERCRED` exists, `chat_id` re-checked against `owner_allow_from`; request line capped at 16 KiB and 10 s to arrive, question text at 4000 chars; one in-flight turn per chat; a stale socket file is replaced, any other file or a live server is refused | **25 protocol/handler tests pass; the 5 tests that bind a real socket skip on Windows and are not yet run on Linux** |
 | `check` | validate + probe | resolves secrets, assembles the prompt, connects each MCP server; **exits non-zero** if a secret is missing, a server is unreachable, every provider is in a peak window now, or a connected server exposes 0 tools. `--probe-llm` additionally makes one 1-token call per eligible provider and fails on any error | **done** |
 | Packaging | `pipx install infra-assistant` from a release | builds locally with hatchling; not published; `httpx`/`litellm`/`mcp` now upper-bounded | pre-release |
 | Live run | bot proven end to end against a real Telegram bot + real provider | every automated test uses fakes; a real stdio handshake against an MCP server is verified; `--probe-llm` against a real endpoint is not | **unverified** |
@@ -87,8 +88,9 @@ Module map (`src/infra_assistant/`):
 | `mcp_client.py` | `MCPPool` — open N MCP `Client`s, flatten + namespace their tools, route calls back (each under `asyncio.wait_for`), render results (16 k-char cap). Injectable `transport_factory` for tests. |
 | `agent.py` | `Agent.answer` — the bounded tool-calling loop; `_complete` wraps each model call in `asyncio.timeout(remaining budget)`; cumulative tool-output budget. |
 | `telegram_bot.py` | PTB wiring (`concurrent_updates` + per-chat lock), allowlist, command handlers, `add_error_handler`, UTF-16-aware 4096-unit reply splitting. |
-| `runner.py` | `build_runtime` (shared by `run`/`check`; closes the pool if a later step fails) and `serve` (drives the long-poll loop, cleans up). |
-| `cli.py` | `infra-assistant run` / `infra-assistant check` (`--probe-llm`), `--no-litellm`, `--prompt-dir`, `--log-level`; best-effort owner alert on a `run` startup failure. |
+| `runner.py` | `build_runtime` (shared by `run`/`serve`/`check`; closes the pool if a later step fails), `serve` (drives the long-poll loop, cleans up) and `serve_socket` (the Unix-socket mode; removes its socket file on exit). |
+| `socket_server.py` | The `serve` protocol: `parse_request`, `handle_request` (allowlist, reset, error mapping, per-chat lock), `handle_connection` (bounded read, peer-uid check), `start_unix_server` (mode 0600, stale-socket handling). |
+| `cli.py` | `infra-assistant run` / `serve` (`--socket`) / `check` (`--probe-llm`), `--no-litellm`, `--prompt-dir`, `--log-level`; best-effort owner alert on a `run` startup failure. |
 
 ---
 
